@@ -168,9 +168,9 @@ family-tree-app/
 
 ## 📧 Контакти
 
-Ваше Ім'я - [@yourtwitter](https://twitter.com/yourtwitter)
+Ваше Ім'я - Ihor
 
-Project Link: [https://github.com/yourusername/family-tree-app](https://github.com/yourusername/family-tree-app)
+Project Link: [https://github.com/labsinet/my_genealogy](https://github.com/labsinet/my_genealogy)
 
 ---
 
