@@ -327,17 +327,24 @@ const App = () => {
 
   const getParents = (personId) => {
     const person = getPersonById(personId);
-    if (!person || !person.parents.length) return [];
+    if (!person || !person.parents || person.parents.length === 0) return [];
     
     const parents = [];
     person.parents.forEach(famId => {
       const family = families.find(f => f.id === famId);
       if (family) {
-        if (family.husband) parents.push(getPersonById(family.husband));
-        if (family.wife) parents.push(getPersonById(family.wife));
+        // Завжди додаємо обох батьків, якщо вони є
+        if (family.husband) {
+          const father = getPersonById(family.husband);
+          if (father) parents.push(father);
+        }
+        if (family.wife) {
+          const mother = getPersonById(family.wife);
+          if (mother) parents.push(mother);
+        }
       }
     });
-    return parents.filter(Boolean);
+    return parents;
   };
 
   const createFamily = () => {
@@ -450,68 +457,300 @@ const App = () => {
     );
   };
 
-  const AncestorNode = ({ person, level = 0 }) => {
-    const parents = getParents(person.id);
-    const spouse = getSpouse(person.id);
+  // Функція для побудови дерева предків у вигляді структури даних
+  const buildAncestorLevels = (personId, level = 1, levels = {}) => {
+    const person = getPersonById(personId);
+    if (!person) return levels;
     
+    if (!levels[level]) levels[level] = [];
+    levels[level].push(person);
+    
+    const parents = getParents(personId);
+    parents.forEach(parent => {
+      buildAncestorLevels(parent.id, level + 1, levels);
+    });
+    
+    return levels;
+  };
+
+  const AncestorTreeGrid = ({ person }) => {
     if (!person) return null;
+    
+    const spouse = getSpouse(person.id);
+    const personParents = getParents(person.id);
+    const spouseParents = spouse ? getParents(spouse.id) : [];
+    
+    // Будуємо рівні для обох гілок (рівень 2 і вище)
+    const personLevels = personParents.length > 0 
+      ? personParents.reduce((acc, parent) => {
+          const levels = buildAncestorLevels(parent.id, 2); // Починаємо з рівня 2
+          Object.keys(levels).forEach(level => {
+            if (!acc[level]) acc[level] = [];
+            acc[level].push(...levels[level]);
+          });
+          return acc;
+        }, {})
+      : {};
+    
+    const spouseLevels = spouse && spouseParents.length > 0
+      ? spouseParents.reduce((acc, parent) => {
+          const levels = buildAncestorLevels(parent.id, 2); // Починаємо з рівня 2
+          Object.keys(levels).forEach(level => {
+            if (!acc[level]) acc[level] = [];
+            acc[level].push(...levels[level]);
+          });
+          return acc;
+        }, {})
+      : {};
+    
+    const maxLevel = Math.max(
+      ...Object.keys(personLevels).map(Number),
+      ...Object.keys(spouseLevels).map(Number),
+      1
+    );
+    
+    console.log('\n=== AncestorTree Grid ===');
+    console.log('Максимальний рівень:', maxLevel);
+    console.log('Рівні головної особи:', personLevels);
+    console.log('Рівні подружжя:', spouseLevels);
+
+    const renderPersonCard = (p) => (
+      <div 
+        key={p.id}
+        className={`border-2 rounded-lg p-2 bg-white shadow-sm hover:shadow-md transition-all cursor-pointer relative
+          ${p.sex === 'M' ? 'border-l-4 border-l-blue-400' : 'border-l-4 border-l-pink-400'} border-gray-300`}
+        style={{ 
+          width: '130px',
+          height: '70px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+        onClick={() => {
+          setSelectedPerson(p);
+          setView('edit');
+        }}
+        title={`${p.name}\nСтать: ${p.sex === 'M' ? 'Ч' : 'Ж'}`}
+      >
+        <div className="flex items-center gap-1 w-full px-1">
+          <Users size={13} className={p.sex === 'M' ? 'text-blue-600' : 'text-pink-600'} />
+          <div className="flex-1 min-w-0">
+            <h3 className="font-bold text-xs truncate leading-tight">{p.name || 'Без імені'}</h3>
+            {p.birth && <p className="text-xs text-gray-500 leading-tight mt-0.5">{p.birth}</p>}
+          </div>
+        </div>
+      </div>
+    );
 
     return (
-      <div className="flex flex-col items-center">
-        {/* Батьки на верхньому рівні */}
-        {parents.length > 0 && (
-          <div className="flex gap-8 mb-4">
-            {parents.map((parent, idx) => (
-              <div key={parent.id} className="flex flex-col items-center">
-                <AncestorNode person={parent} level={level + 1} />
+      <div className="flex flex-col items-center py-6 px-4">
+        {/* Рівні предків (рівень 2 і вище) */}
+        {maxLevel >= 2 && (
+          <div className="mb-6">
+            {Array.from({ length: maxLevel - 1 }, (_, i) => maxLevel - i).map(level => (
+              <div key={level} className="mb-8">
+                <div className="text-xs text-gray-500 text-center mb-3 font-semibold">
+                  Покоління {level} ({level === 2 ? 'Діди/Баби' : level === 3 ? 'Прадіди/Прабаби' : `Предки рівня ${level}`})
+                </div>
+                
+                <div className="flex gap-32 justify-center items-start">
+                  {/* Гілка головної особи */}
+                  <div className="flex flex-col items-center">
+                    <div className="flex gap-4 justify-center">
+                      {personLevels[level] ? (
+                        personLevels[level].map(p => renderPersonCard(p))
+                      ) : (
+                        <div className="text-xs text-gray-400 italic" style={{ width: '130px', height: '70px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          —
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Лінії вниз */}
+                    {personLevels[level] && (
+                      <div className="flex justify-center mt-2">
+                        {personLevels[level].length === 2 ? (
+                          <div className="flex flex-col items-center">
+                            <div className="flex">
+                              <div className="h-0.5 bg-blue-400" style={{width: '65px'}}></div>
+                              <div className="h-0.5 bg-pink-400" style={{width: '65px'}}></div>
+                            </div>
+                            <div className="w-0.5 h-8 bg-gray-500"></div>
+                          </div>
+                        ) : (
+                          <div className="w-0.5 h-8 bg-gray-500"></div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Гілка подружжя */}
+                  {spouse && (
+                    <div className="flex flex-col items-center">
+                      <div className="flex gap-4 justify-center">
+                        {spouseLevels[level] ? (
+                          spouseLevels[level].map(p => renderPersonCard(p))
+                        ) : (
+                          <div className="text-xs text-gray-400 italic" style={{ width: '130px', height: '70px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            —
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Лінії вниз */}
+                      {spouseLevels[level] && (
+                        <div className="flex justify-center mt-2">
+                          {spouseLevels[level].length === 2 ? (
+                            <div className="flex flex-col items-center">
+                              <div className="flex">
+                                <div className="h-0.5 bg-blue-400" style={{width: '65px'}}></div>
+                                <div className="h-0.5 bg-pink-400" style={{width: '65px'}}></div>
+                              </div>
+                              <div className="w-0.5 h-8 bg-gray-500"></div>
+                            </div>
+                          ) : (
+                            <div className="w-0.5 h-8 bg-gray-500"></div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>
         )}
 
-        {/* Лінія від батьків */}
-        {parents.length > 0 && (
-          <div className="w-px h-8 bg-gray-400 mb-2"></div>
-        )}
-
-        {/* Поточна особа з подружжям */}
-        <div className="flex items-center gap-4">
-          {spouse && (
-            <>
-              <div 
-                className="border-2 border-gray-300 rounded-lg p-3 bg-white shadow-md hover:shadow-lg transition-shadow cursor-pointer min-w-[180px]"
-                onClick={() => {
-                  setSelectedPerson(spouse);
-                  setView('edit');
-                }}
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <Users size={18} className={spouse.sex === 'M' ? 'text-blue-500' : 'text-pink-500'} />
-                  <h3 className="font-bold text-sm">{spouse.name || 'Без імені'}</h3>
+        {/* Рівень 1 - Батьки (показуємо ОДИН РАЗ) */}
+        {(personParents.length > 0 || (spouse && spouseParents.length > 0)) && (
+          <div className="mb-8">
+            <div className="text-xs text-gray-500 text-center mb-3 font-semibold">
+              Покоління 1 (Батьки)
+            </div>
+            
+            <div className="flex gap-32 justify-center items-start">
+              {/* Батьки головної особи */}
+              <div className="flex flex-col items-center">
+                <div className="flex gap-4">
+                  {personParents.length > 0 ? (
+                    personParents.map(p => renderPersonCard(p))
+                  ) : (
+                    <div className="text-xs text-gray-400 italic border border-dashed border-gray-300 rounded p-3" style={{ width: '130px', height: '70px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      Немає даних
+                    </div>
+                  )}
                 </div>
-                {spouse.birth && <p className="text-xs text-gray-500">{spouse.birth}</p>}
+                
+                {/* Лінії вниз до дитини */}
+                {personParents.length > 0 && (
+                  <div className="flex flex-col items-center mt-2">
+                    {personParents.length === 2 && (
+                      <div className="flex">
+                        <div className="h-0.5 bg-blue-400" style={{width: '65px'}}></div>
+                        <div className="h-0.5 bg-pink-400" style={{width: '65px'}}></div>
+                      </div>
+                    )}
+                    <div className="w-0.5 h-8 bg-gray-500"></div>
+                  </div>
+                )}
               </div>
               
-              <Heart size={20} className="text-red-500" />
+              {/* Батьки подружжя */}
+              {spouse && (
+                <div className="flex flex-col items-center">
+                  <div className="flex gap-4">
+                    {spouseParents.length > 0 ? (
+                      spouseParents.map(p => renderPersonCard(p))
+                    ) : (
+                      <div className="text-xs text-gray-400 italic border border-dashed border-gray-300 rounded p-3" style={{ width: '130px', height: '70px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        Немає даних
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Лінії вниз до дитини */}
+                  {spouseParents.length > 0 && (
+                    <div className="flex flex-col items-center mt-2">
+                      {spouseParents.length === 2 && (
+                        <div className="flex">
+                          <div className="h-0.5 bg-blue-400" style={{width: '65px'}}></div>
+                          <div className="h-0.5 bg-pink-400" style={{width: '65px'}}></div>
+                        </div>
+                      )}
+                      <div className="w-0.5 h-8 bg-gray-500"></div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Рівень 0 - Пара */}
+        <div className="flex items-center gap-4 px-6 py-3 bg-gradient-to-r from-blue-50 via-white to-pink-50 rounded-lg shadow-md">
+          {spouse && person.sex === 'F' && (
+            <>
+              <div 
+                className="border-2 border-blue-500 rounded-lg p-3 bg-blue-50 shadow-lg hover:shadow-xl transition-all cursor-pointer flex items-center"
+                style={{ width: '170px', height: '85px' }}
+                onClick={() => setRootPersonId(spouse.id)}
+                title="Клікніть для перегляду дерева"
+              >
+                <div className="flex items-center gap-2 w-full">
+                  <Users size={20} className="text-blue-700 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-bold text-sm truncate">{spouse.name}</h3>
+                    {spouse.birth && <p className="text-xs text-gray-600 mt-0.5">{spouse.birth}</p>}
+                    <p className="text-xs text-blue-700 font-semibold mt-1">♂ Чоловік</p>
+                  </div>
+                </div>
+              </div>
+              <Heart size={24} className="text-red-500 flex-shrink-0" />
             </>
           )}
 
           <div 
-            className={`border-2 rounded-lg p-3 bg-white shadow-md hover:shadow-lg transition-shadow cursor-pointer min-w-[180px] ${
-              level === 0 ? 'border-indigo-500 bg-indigo-50' : 'border-gray-300'
+            className={`border-3 rounded-lg p-3 shadow-xl hover:shadow-2xl transition-all cursor-pointer flex items-center ${
+              person.sex === 'M' ? 'border-blue-600 bg-gradient-to-br from-blue-100 to-blue-50' : 'border-pink-600 bg-gradient-to-br from-pink-100 to-pink-50'
             }`}
+            style={{ borderWidth: '3px', width: '170px', height: '85px' }}
             onClick={() => {
               setSelectedPerson(person);
               setView('edit');
             }}
           >
-            <div className="flex items-center gap-2 mb-1">
-              <Users size={18} className={person.sex === 'M' ? 'text-blue-500' : 'text-pink-500'} />
-              <h3 className="font-bold text-sm">{person.name || 'Без імені'}</h3>
+            <div className="flex items-center gap-2 w-full">
+              <Users size={20} className={person.sex === 'M' ? 'text-blue-700' : 'text-pink-700'} />
+              <div className="flex-1 min-w-0">
+                <h3 className="font-bold text-sm truncate">{person.name}</h3>
+                {person.birth && <p className="text-xs text-gray-600 mt-0.5">{person.birth}</p>}
+                <p className="text-xs font-bold uppercase mt-1" style={{color: person.sex === 'M' ? '#1d4ed8' : '#be185d'}}>
+                  ★ ВИБРАНО
+                </p>
+              </div>
             </div>
-            {person.birth && <p className="text-xs text-gray-500">{person.birth}</p>}
-            {level === 0 && <p className="text-xs text-indigo-600 font-semibold mt-1">Вибрана особа</p>}
           </div>
+
+          {spouse && person.sex === 'M' && (
+            <>
+              <Heart size={24} className="text-red-500 flex-shrink-0" />
+              <div 
+                className="border-2 border-pink-500 rounded-lg p-3 bg-pink-50 shadow-lg hover:shadow-xl transition-all cursor-pointer flex items-center"
+                style={{ width: '170px', height: '85px' }}
+                onClick={() => setRootPersonId(spouse.id)}
+                title="Клікніть для перегляду дерева"
+              >
+                <div className="flex items-center gap-2 w-full">
+                  <Users size={20} className="text-pink-700 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-bold text-sm truncate">{spouse.name}</h3>
+                    {spouse.birth && <p className="text-xs text-gray-600 mt-0.5">{spouse.birth}</p>}
+                    <p className="text-xs text-pink-700 font-semibold mt-1">♀ Дружина</p>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     );
@@ -707,7 +946,7 @@ const App = () => {
           )}
 
           {view === 'ancestors' && (
-            <div className="bg-gray-50 p-4 rounded-lg overflow-x-auto">
+            <div className="bg-gray-50 p-4 rounded-lg">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-bold">Дерево предків</h2>
                 {rootPersonId ? (
@@ -718,19 +957,21 @@ const App = () => {
                     Скасувати вибір
                   </button>
                 ) : (
-                  <p className="text-sm text-gray-600">Оберіть особу зі списку або натисніть на картку</p>
+                  <p className="text-sm text-gray-600">Оберіть особу зі списку</p>
                 )}
               </div>
               
               {rootPersonId ? (
-                <div className="flex justify-center py-8">
-                  <AncestorNode person={getPersonById(rootPersonId)} level={0} />
+                <div className="overflow-x-auto pb-4">
+                  <div className="inline-block min-w-full">
+                    <AncestorTreeGrid person={getPersonById(rootPersonId)} />
+                  </div>
                 </div>
               ) : (
-                <div className="text-center py-12">
+                <div className="text-center py-8">
                   <Users size={48} className="mx-auto text-gray-400 mb-4" />
                   <p className="text-gray-600 mb-4">Оберіть особу для відображення дерева предків</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-w-4xl mx-auto">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-w-5xl mx-auto">
                     {people.map(person => (
                       <button
                         key={person.id}
@@ -738,8 +979,8 @@ const App = () => {
                         className="border-2 border-gray-300 rounded-lg p-3 hover:border-indigo-500 hover:bg-indigo-50 transition-all text-left"
                       >
                         <div className="flex items-center gap-2 mb-1">
-                          <Users size={18} className={person.sex === 'M' ? 'text-blue-500' : 'text-pink-500'} />
-                          <h3 className="font-bold text-sm">{person.name || 'Без імені'}</h3>
+                          <Users size={16} className={person.sex === 'M' ? 'text-blue-500' : 'text-pink-500'} />
+                          <h3 className="font-bold text-sm truncate">{person.name || 'Без імені'}</h3>
                         </div>
                         {person.birth && <p className="text-xs text-gray-500">{person.birth}</p>}
                       </button>
