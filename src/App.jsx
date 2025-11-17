@@ -450,6 +450,73 @@ const App = () => {
     );
   };
 
+  const AncestorNode = ({ person, level = 0 }) => {
+    const parents = getParents(person.id);
+    const spouse = getSpouse(person.id);
+    
+    if (!person) return null;
+
+    return (
+      <div className="flex flex-col items-center">
+        {/* Батьки на верхньому рівні */}
+        {parents.length > 0 && (
+          <div className="flex gap-8 mb-4">
+            {parents.map((parent, idx) => (
+              <div key={parent.id} className="flex flex-col items-center">
+                <AncestorNode person={parent} level={level + 1} />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Лінія від батьків */}
+        {parents.length > 0 && (
+          <div className="w-px h-8 bg-gray-400 mb-2"></div>
+        )}
+
+        {/* Поточна особа з подружжям */}
+        <div className="flex items-center gap-4">
+          {spouse && (
+            <>
+              <div 
+                className="border-2 border-gray-300 rounded-lg p-3 bg-white shadow-md hover:shadow-lg transition-shadow cursor-pointer min-w-[180px]"
+                onClick={() => {
+                  setSelectedPerson(spouse);
+                  setView('edit');
+                }}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Users size={18} className={spouse.sex === 'M' ? 'text-blue-500' : 'text-pink-500'} />
+                  <h3 className="font-bold text-sm">{spouse.name || 'Без імені'}</h3>
+                </div>
+                {spouse.birth && <p className="text-xs text-gray-500">{spouse.birth}</p>}
+              </div>
+              
+              <Heart size={20} className="text-red-500" />
+            </>
+          )}
+
+          <div 
+            className={`border-2 rounded-lg p-3 bg-white shadow-md hover:shadow-lg transition-shadow cursor-pointer min-w-[180px] ${
+              level === 0 ? 'border-indigo-500 bg-indigo-50' : 'border-gray-300'
+            }`}
+            onClick={() => {
+              setSelectedPerson(person);
+              setView('edit');
+            }}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <Users size={18} className={person.sex === 'M' ? 'text-blue-500' : 'text-pink-500'} />
+              <h3 className="font-bold text-sm">{person.name || 'Без імені'}</h3>
+            </div>
+            {person.birth && <p className="text-xs text-gray-500">{person.birth}</p>}
+            {level === 0 && <p className="text-xs text-indigo-600 font-semibold mt-1">Вибрана особа</p>}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   if (!dbReady) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
@@ -504,7 +571,13 @@ const App = () => {
               onClick={() => setView('tree')}
               className={`px-4 py-2 rounded-lg ${view === 'tree' ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}
             >
-              Дерево
+              Дерево нащадків
+            </button>
+            <button
+              onClick={() => setView('ancestors')}
+              className={`px-4 py-2 rounded-lg ${view === 'ancestors' ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}
+            >
+              Дерево предків
             </button>
             <button
               onClick={addPerson}
@@ -569,9 +642,19 @@ const App = () => {
                             setView('tree');
                           }}
                           className="text-green-500 hover:bg-green-50 p-2 rounded"
-                          title="Показати дерево"
+                          title="Показати дерево нащадків"
                         >
                           <Users size={18} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setRootPersonId(person.id);
+                            setView('ancestors');
+                          }}
+                          className="text-purple-500 hover:bg-purple-50 p-2 rounded"
+                          title="Показати дерево предків"
+                        >
+                          <Users size={18} className="rotate-180" />
                         </button>
                         <button
                           onClick={() => {
@@ -600,7 +683,7 @@ const App = () => {
           {view === 'tree' && (
             <div className="bg-gray-50 p-4 rounded-lg overflow-x-auto">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold">Візуалізація дерева</h2>
+                <h2 className="text-xl font-bold">Дерево нащадків</h2>
                 {rootPersonId && (
                   <button
                     onClick={() => setRootPersonId(null)}
@@ -619,6 +702,50 @@ const App = () => {
                     <PersonCard person={rootPerson} showRelations={true} />
                   </div>
                 ))
+              )}
+            </div>
+          )}
+
+          {view === 'ancestors' && (
+            <div className="bg-gray-50 p-4 rounded-lg overflow-x-auto">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold">Дерево предків</h2>
+                {rootPersonId ? (
+                  <button
+                    onClick={() => setRootPersonId(null)}
+                    className="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300"
+                  >
+                    Скасувати вибір
+                  </button>
+                ) : (
+                  <p className="text-sm text-gray-600">Оберіть особу зі списку або натисніть на картку</p>
+                )}
+              </div>
+              
+              {rootPersonId ? (
+                <div className="flex justify-center py-8">
+                  <AncestorNode person={getPersonById(rootPersonId)} level={0} />
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <Users size={48} className="mx-auto text-gray-400 mb-4" />
+                  <p className="text-gray-600 mb-4">Оберіть особу для відображення дерева предків</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-w-4xl mx-auto">
+                    {people.map(person => (
+                      <button
+                        key={person.id}
+                        onClick={() => setRootPersonId(person.id)}
+                        className="border-2 border-gray-300 rounded-lg p-3 hover:border-indigo-500 hover:bg-indigo-50 transition-all text-left"
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <Users size={18} className={person.sex === 'M' ? 'text-blue-500' : 'text-pink-500'} />
+                          <h3 className="font-bold text-sm">{person.name || 'Без імені'}</h3>
+                        </div>
+                        {person.birth && <p className="text-xs text-gray-500">{person.birth}</p>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           )}
